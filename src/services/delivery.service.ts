@@ -115,8 +115,23 @@ export class DeliveryService {
     vehicle: any;
     waypoints: Waypoint[];
   }>> {
+    // Validate coordinates
+    if (north <= south) {
+      throw new Error('North coordinate must be greater than south coordinate');
+    }
+    if (east <= west) {
+      throw new Error('East coordinate must be greater than west coordinate');
+    }
+
     const vehicles = await this.testDataService.getAvailableVehicles();
+    if (vehicles.length === 0) {
+      throw new Error('No available vehicles found');
+    }
+
     const orders = await this.testDataService.getPendingOrders();
+    if (orders.length === 0) {
+      throw new Error('No pending orders found');
+    }
     
     // Filter orders within the specified area
     const areaOrders = orders.filter(order => 
@@ -126,19 +141,33 @@ export class DeliveryService {
       order.pickupLongitude >= west
     );
 
+    if (areaOrders.length === 0) {
+      throw new Error('No orders found in the specified area');
+    }
+
     const vehicleRoutes = this.routeOptimizerService.optimizeMultiVehicleRoutes(
       vehicles,
       areaOrders,
     );
 
+    if (vehicleRoutes.size === 0) {
+      throw new Error('No routes could be generated for the available vehicles');
+    }
+
     const result = new Map();
     for (const [vehicleId, route] of vehicleRoutes.entries()) {
       const vehicle = vehicles.find(v => v.id === vehicleId);
-      const waypoints = this.routeOptimizerService.generateWaypoints(route);
-      result.set(vehicleId, {
-        vehicle,
-        waypoints,
-      });
+      if (vehicle) {
+        const waypoints = this.routeOptimizerService.generateWaypoints(route);
+        result.set(vehicleId, {
+          vehicle,
+          waypoints,
+        });
+      }
+    }
+
+    if (result.size === 0) {
+      throw new Error('No valid routes could be generated');
     }
 
     return result;

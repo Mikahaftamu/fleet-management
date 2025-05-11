@@ -1,4 +1,31 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { IsEnum, IsNumber, IsOptional } from 'class-validator';
+
+export enum OrderStatus {
+  PENDING = 'pending',
+  IN_PROGRESS = 'in_progress',
+  COMPLETED = 'completed',
+  CANCELLED = 'cancelled'
+}
+
+export class StatusUpdateDto {
+  @ApiProperty({
+    enum: OrderStatus,
+    description: 'New status of the order',
+    example: OrderStatus.IN_PROGRESS
+  })
+  @IsEnum(OrderStatus)
+  status: OrderStatus;
+
+  @ApiProperty({
+    description: 'ID of the assigned vehicle',
+    required: false,
+    example: 1
+  })
+  @IsNumber()
+  @IsOptional()
+  vehicleId?: number;
+}
 
 export class CreateOrderDto {
   @ApiProperty({ example: 1, description: 'ID of the customer' })

@@ -79,10 +79,14 @@ export class RouteOptimizerService {
   }
 
   generateWaypoints(route: Order[]): Waypoint[] {
+    if (!route || route.length === 0) {
+      return [];
+    }
+
     const waypoints: Waypoint[] = [];
     let currentLocation = {
-      lat: route[0]?.pickupLatitude || 0,
-      lon: route[0]?.pickupLongitude || 0,
+      lat: route[0].pickupLatitude,
+      lon: route[0].pickupLongitude,
     };
     let stepNumber = 1;
 

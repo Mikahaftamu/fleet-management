@@ -3,8 +3,8 @@ import { ApiTags, ApiOperation, ApiResponse, ApiQuery } from '@nestjs/swagger';
 import { RouteOptimizerService } from '../services/route-optimizer.service';
 import { TestDataService } from '../services/test-data.service';
 import { DeliveryService } from '../services/delivery.service';
-import { CreateVehicleDto, UpdateVehicleDto, VehicleResponseDto } from '../dto/vehicle.dto';
-import { CreateOrderDto, UpdateOrderDto, OrderResponseDto } from '../dto/order.dto';
+import { CreateVehicleDto, UpdateVehicleDto, VehicleResponseDto, LocationUpdateDto } from '../dto/vehicle.dto';
+import { CreateOrderDto, UpdateOrderDto, OrderResponseDto, StatusUpdateDto } from '../dto/order.dto';
 import { RouteResponseDto, AnalyticsResponseDto } from '../dto/route.dto';
 
 @Controller('delivery')
@@ -120,16 +120,22 @@ export class DeliveryController {
   @Get('optimize/:vehicleId')
   @ApiOperation({ summary: 'Get optimized route for a vehicle' })
   @ApiResponse({ status: 200, description: 'Returns the optimized route with waypoints', type: RouteResponseDto })
-  async getOptimizedRoute(@Param('vehicleId') vehicleId: number) {
-    return this.deliveryService.getOptimizedRoute(vehicleId);
+  async getOptimizedRoute(@Param('vehicleId') vehicleId: string) {
+    return this.deliveryService.getOptimizedRoute(Number(vehicleId));
   }
 
   @ApiTags('Route Optimization')
   @Get('optimize-multi')
   @ApiOperation({ summary: 'Get optimized routes for all available vehicles' })
-  @ApiResponse({ status: 200, description: 'Returns optimized routes for all vehicles', type: Map })
+  @ApiResponse({ status: 200, description: 'Returns optimized routes for all vehicles', type: Object })
   async getOptimizedMultiVehicleRoutes() {
-    return this.deliveryService.getOptimizedMultiVehicleRoutes();
+    const routes = await this.deliveryService.getOptimizedMultiVehicleRoutes();
+    // Convert Map to plain object for API serialization
+    const result = {};
+    routes.forEach((value, key) => {
+      result[key] = value;
+    });
+    return result;
   }
 
   @ApiTags('Route Optimization')
@@ -139,14 +145,25 @@ export class DeliveryController {
   @ApiQuery({ name: 'south', required: true, type: Number })
   @ApiQuery({ name: 'east', required: true, type: Number })
   @ApiQuery({ name: 'west', required: true, type: Number })
-  @ApiResponse({ status: 200, description: 'Returns optimized routes for the specified area', type: Map })
+  @ApiResponse({ status: 200, description: 'Returns optimized routes for the specified area', type: Object })
   async getOptimizedRoutesForArea(
-    @Query('north') north: number,
-    @Query('south') south: number,
-    @Query('east') east: number,
-    @Query('west') west: number,
+    @Query('north') north: string,
+    @Query('south') south: string,
+    @Query('east') east: string,
+    @Query('west') west: string,
   ) {
-    return this.deliveryService.getOptimizedRoutesForArea(north, south, east, west);
+    const routes = await this.deliveryService.getOptimizedRoutesForArea(
+      Number(north),
+      Number(south),
+      Number(east),
+      Number(west)
+    );
+    // Convert Map to plain object for API serialization
+    const result = {};
+    routes.forEach((value, key) => {
+      result[key] = value;
+    });
+    return result;
   }
 
   // =========================================
@@ -157,11 +174,10 @@ export class DeliveryController {
   @ApiOperation({ summary: 'Update order status' })
   @ApiResponse({ status: 200, description: 'Order status updated successfully', type: OrderResponseDto })
   async updateOrderStatus(
-    @Param('orderId') orderId: number,
-    @Body('status') status: string,
-    @Body('vehicleId') vehicleId?: number,
+    @Param('orderId') orderId: string,
+    @Body() statusUpdate: StatusUpdateDto
   ) {
-    return this.deliveryService.updateOrderStatus(orderId, status, vehicleId);
+    return this.deliveryService.updateOrderStatus(Number(orderId), statusUpdate.status, statusUpdate.vehicleId);
   }
 
   @ApiTags('Status Updates')
@@ -169,19 +185,22 @@ export class DeliveryController {
   @ApiOperation({ summary: 'Update vehicle location' })
   @ApiResponse({ status: 200, description: 'Vehicle location updated successfully', type: VehicleResponseDto })
   async updateVehicleLocation(
-    @Param('vehicleId') vehicleId: number,
-    @Body('latitude') latitude: number,
-    @Body('longitude') longitude: number,
+    @Param('vehicleId') vehicleId: string,
+    @Body() location: LocationUpdateDto
   ) {
-    return this.deliveryService.updateVehicleLocation(vehicleId, latitude, longitude);
+    return this.deliveryService.updateVehicleLocation(
+      Number(vehicleId),
+      location.latitude,
+      location.longitude
+    );
   }
 
   @ApiTags('Status Updates')
   @Get('vehicle/:vehicleId/current-location')
   @ApiOperation({ summary: 'Get current vehicle location' })
   @ApiResponse({ status: 200, description: 'Returns the current vehicle location', type: VehicleResponseDto })
-  async getVehicleLocation(@Param('vehicleId') vehicleId: number) {
-    return this.deliveryService.getVehicleLocation(vehicleId);
+  async getVehicleLocation(@Param('vehicleId') vehicleId: string) {
+    return this.deliveryService.getVehicleLocation(Number(vehicleId));
   }
 
   // =========================================

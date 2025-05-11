@@ -1,4 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { IsNumber, Min, Max } from 'class-validator';
 
 export class CreateVehicleDto {
   @ApiProperty({ example: 'Truck', description: 'Type of the vehicle' })
@@ -52,4 +53,28 @@ export class VehicleResponseDto {
 
   @ApiProperty({ example: 0, description: 'ID of the current order being delivered' })
   currentOrderId: number;
+}
+
+export class LocationUpdateDto {
+  @ApiProperty({
+    description: 'New latitude coordinate',
+    example: 13.4966,
+    minimum: -90,
+    maximum: 90
+  })
+  @IsNumber()
+  @Min(-90)
+  @Max(90)
+  latitude: number;
+
+  @ApiProperty({
+    description: 'New longitude coordinate',
+    example: 39.4753,
+    minimum: -180,
+    maximum: 180
+  })
+  @IsNumber()
+  @Min(-180)
+  @Max(180)
+  longitude: number;
 } 
