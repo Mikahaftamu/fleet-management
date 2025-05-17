@@ -1,11 +1,15 @@
-import { Controller, Get, Post, Body, Param, Put, Delete, Query } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiQuery } from '@nestjs/swagger';
+import { Controller, Get, Post, Body, Param, Put, Delete, Query, ParseIntPipe, BadRequestException } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiQuery, ApiParam } from '@nestjs/swagger';
 import { RouteOptimizerService } from '../services/route-optimizer.service';
 import { TestDataService } from '../services/test-data.service';
 import { DeliveryService } from '../services/delivery.service';
+import { DirectionsService } from '../services/directions.service';
 import { CreateVehicleDto, UpdateVehicleDto, VehicleResponseDto, LocationUpdateDto } from '../dto/vehicle.dto';
 import { CreateOrderDto, UpdateOrderDto, OrderResponseDto, StatusUpdateDto } from '../dto/order.dto';
 import { RouteResponseDto, AnalyticsResponseDto } from '../dto/route.dto';
+import { AreaQueryDto } from '../dto/area.dto';
+import { DirectionsQueryDto } from '../dto/directions.dto';
+import { VehicleIdParam } from '../dto/vehicle-id.dto';
 
 @Controller('delivery')
 export class DeliveryController {
@@ -13,6 +17,7 @@ export class DeliveryController {
     private readonly routeOptimizerService: RouteOptimizerService,
     private readonly testDataService: TestDataService,
     private readonly deliveryService: DeliveryService,
+    private readonly directionsService: DirectionsService,
   ) {}
 
   // =========================================
@@ -119,9 +124,37 @@ export class DeliveryController {
   @ApiTags('Route Optimization')
   @Get('optimize/:vehicleId')
   @ApiOperation({ summary: 'Get optimized route for a vehicle' })
+  @ApiParam({
+    name: 'vehicleId',
+    description: 'ID of the vehicle',
+    type: Number,
+    required: true,
+    example: 1
+  })
   @ApiResponse({ status: 200, description: 'Returns the optimized route with waypoints', type: RouteResponseDto })
-  async getOptimizedRoute(@Param('vehicleId') vehicleId: string) {
-    return this.deliveryService.getOptimizedRoute(Number(vehicleId));
+  @ApiResponse({ status: 400, description: 'Invalid vehicle ID' })
+  async getOptimizedRoute(@Param('vehicleId', ParseIntPipe) vehicleId: number) {
+    try {
+      if (isNaN(vehicleId) || vehicleId <= 0) {
+        throw new BadRequestException(`Invalid vehicle ID: ${vehicleId}. Vehicle ID must be a positive number.`);
+      }
+      
+      const route = await this.deliveryService.getOptimizedRoute(vehicleId);
+      return {
+        success: true,
+        data: route
+      };
+    } catch (error) {
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      
+      return {
+        success: false,
+        message: error.message || 'An error occurred while optimizing the route',
+        vehicleId: vehicleId
+      };
+    }
   }
 
   @ApiTags('Route Optimization')
@@ -139,31 +172,87 @@ export class DeliveryController {
   }
 
   @ApiTags('Route Optimization')
-  @Get('optimize/area')
+  @Get('area-optimize')
   @ApiOperation({ summary: 'Get optimized routes for a specific area' })
-  @ApiQuery({ name: 'north', required: true, type: Number })
-  @ApiQuery({ name: 'south', required: true, type: Number })
-  @ApiQuery({ name: 'east', required: true, type: Number })
-  @ApiQuery({ name: 'west', required: true, type: Number })
   @ApiResponse({ status: 200, description: 'Returns optimized routes for the specified area', type: Object })
-  async getOptimizedRoutesForArea(
-    @Query('north') north: string,
-    @Query('south') south: string,
-    @Query('east') east: string,
-    @Query('west') west: string,
-  ) {
-    const routes = await this.deliveryService.getOptimizedRoutesForArea(
-      Number(north),
-      Number(south),
-      Number(east),
-      Number(west)
-    );
-    // Convert Map to plain object for API serialization
-    const result = {};
-    routes.forEach((value, key) => {
-      result[key] = value;
-    });
-    return result;
+  @ApiResponse({ status: 400, description: 'Invalid area coordinates' })
+  async getOptimizedRoutesForArea(@Query() query: AreaQueryDto) {
+    try {
+      // Validate that north > south and east > west
+      if (query.north <= query.south) {
+        throw new BadRequestException('North coordinate must be greater than south coordinate');
+      }
+      if (query.east <= query.west) {
+        throw new BadRequestException('East coordinate must be greater than west coordinate');
+      }
+      
+      const routes = await this.deliveryService.getOptimizedRoutesForArea(
+        query.north,
+        query.south,
+        query.east,
+        query.west
+      );
+      
+      // Convert Map to plain object for API serialization
+      const result = {};
+      routes.forEach((value, key) => {
+        result[key] = value;
+      });
+      
+      return {
+        success: true,
+        data: result
+      };
+    } catch (error) {
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      
+      return {
+        success: false,
+        message: error.message || 'An error occurred while optimizing routes',
+        details: {
+          coordinates: {
+            north: query.north,
+            south: query.south,
+            east: query.east,
+            west: query.west
+          }
+        }
+      };
+    }
+  }
+
+  @ApiTags('Route Optimization')
+  @Get('directions')
+  @ApiOperation({ summary: 'Get turn-by-turn directions between two points' })
+  @ApiResponse({ status: 200, description: 'Returns turn-by-turn directions', type: Object })
+  async getDirections(@Query() query: DirectionsQueryDto) {
+    try {
+      const result = await this.directionsService.getDirections(
+        query.startLat,
+        query.startLng,
+        query.endLat,
+        query.endLng
+      );
+      
+      if (!result) {
+        return {
+          success: false,
+          message: 'Unable to get directions. Please check if API key is configured correctly.'
+        };
+      }
+      
+      return {
+        success: true,
+        data: result
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: `Error fetching directions: ${error.message}`
+      };
+    }
   }
 
   // =========================================
@@ -172,35 +261,107 @@ export class DeliveryController {
   @ApiTags('Status Updates')
   @Put('status/:orderId')
   @ApiOperation({ summary: 'Update order status' })
+  @ApiParam({
+    name: 'orderId',
+    description: 'ID of the order',
+    type: Number,
+    required: true,
+    example: 1
+  })
   @ApiResponse({ status: 200, description: 'Order status updated successfully', type: OrderResponseDto })
+  @ApiResponse({ status: 400, description: 'Invalid order ID' })
   async updateOrderStatus(
-    @Param('orderId') orderId: string,
+    @Param('orderId', ParseIntPipe) orderId: number,
     @Body() statusUpdate: StatusUpdateDto
   ) {
-    return this.deliveryService.updateOrderStatus(Number(orderId), statusUpdate.status, statusUpdate.vehicleId);
+    try {
+      if (isNaN(orderId) || orderId <= 0) {
+        throw new BadRequestException(`Invalid order ID: ${orderId}. Order ID must be a positive number.`);
+      }
+      
+      return this.deliveryService.updateOrderStatus(orderId, statusUpdate.status, statusUpdate.vehicleId);
+    } catch (error) {
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      
+      return {
+        success: false,
+        message: error.message || 'An error occurred while updating order status',
+        orderId: orderId
+      };
+    }
   }
 
   @ApiTags('Status Updates')
   @Put('vehicle/:vehicleId/location')
   @ApiOperation({ summary: 'Update vehicle location' })
+  @ApiParam({
+    name: 'vehicleId',
+    description: 'ID of the vehicle',
+    type: Number,
+    required: true,
+    example: 1
+  })
   @ApiResponse({ status: 200, description: 'Vehicle location updated successfully', type: VehicleResponseDto })
+  @ApiResponse({ status: 400, description: 'Invalid vehicle ID' })
   async updateVehicleLocation(
-    @Param('vehicleId') vehicleId: string,
+    @Param('vehicleId', ParseIntPipe) vehicleId: number,
     @Body() location: LocationUpdateDto
   ) {
-    return this.deliveryService.updateVehicleLocation(
-      Number(vehicleId),
-      location.latitude,
-      location.longitude
-    );
+    try {
+      if (isNaN(vehicleId) || vehicleId <= 0) {
+        throw new BadRequestException(`Invalid vehicle ID: ${vehicleId}. Vehicle ID must be a positive number.`);
+      }
+      
+      return this.deliveryService.updateVehicleLocation(
+        vehicleId,
+        location.latitude,
+        location.longitude
+      );
+    } catch (error) {
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      
+      return {
+        success: false,
+        message: error.message || 'An error occurred while updating vehicle location',
+        vehicleId: vehicleId
+      };
+    }
   }
 
   @ApiTags('Status Updates')
   @Get('vehicle/:vehicleId/current-location')
   @ApiOperation({ summary: 'Get current vehicle location' })
+  @ApiParam({
+    name: 'vehicleId',
+    description: 'ID of the vehicle',
+    type: Number,
+    required: true,
+    example: 1
+  })
   @ApiResponse({ status: 200, description: 'Returns the current vehicle location', type: VehicleResponseDto })
-  async getVehicleLocation(@Param('vehicleId') vehicleId: string) {
-    return this.deliveryService.getVehicleLocation(Number(vehicleId));
+  @ApiResponse({ status: 400, description: 'Invalid vehicle ID' })
+  async getVehicleLocation(@Param('vehicleId', ParseIntPipe) vehicleId: number) {
+    try {
+      if (isNaN(vehicleId) || vehicleId <= 0) {
+        throw new BadRequestException(`Invalid vehicle ID: ${vehicleId}. Vehicle ID must be a positive number.`);
+      }
+      
+      return this.deliveryService.getVehicleLocation(vehicleId);
+    } catch (error) {
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      
+      return {
+        success: false,
+        message: error.message || 'An error occurred while retrieving vehicle location',
+        vehicleId: vehicleId
+      };
+    }
   }
 
   // =========================================

@@ -66,14 +66,33 @@ export class DeliveryService {
     vehicle: any;
     waypoints: Waypoint[];
   }> {
+    console.log(`Getting optimized route for vehicle ID: ${vehicleId}`);
+    
+    // Check if vehicle ID is valid
+    if (!vehicleId || isNaN(vehicleId)) {
+      throw new Error(`Invalid vehicle ID: ${vehicleId}`);
+    }
+    
+    // Get all vehicles to see what's available
+    const allVehicles = await this.testDataService.getVehicles();
+    console.log(`Total vehicles in system: ${allVehicles.length}`);
+    console.log(`Available vehicle IDs: ${allVehicles.map(v => v.id).join(', ')}`);
+    
     const vehicle = await this.testDataService.getVehicleById(vehicleId);
     if (!vehicle) {
-      throw new Error('Vehicle not found');
+      throw new Error(`Vehicle not found with ID: ${vehicleId}. Available IDs: ${allVehicles.map(v => v.id).join(', ')}`);
     }
-
+    
+    console.log(`Found vehicle: ID=${vehicle.id}, Type=${vehicle.type}, Status=${vehicle.status}`);
+    
     const orders = await this.testDataService.getPendingOrders();
+    console.log(`Found ${orders.length} pending orders to optimize`);
+    
     const optimizedRoute = this.routeOptimizerService.optimizeRoute(vehicle, orders);
-    const waypoints = this.routeOptimizerService.generateWaypoints(optimizedRoute);
+    console.log(`Optimized route has ${optimizedRoute.length} stops`);
+    
+    const waypoints = await this.routeOptimizerService.generateWaypoints(optimizedRoute);
+    console.log(`Generated ${waypoints.length} waypoints for the route`);
 
     return {
       vehicle,
@@ -96,7 +115,7 @@ export class DeliveryService {
     const result = new Map();
     for (const [vehicleId, route] of vehicleRoutes.entries()) {
       const vehicle = vehicles.find(v => v.id === vehicleId);
-      const waypoints = this.routeOptimizerService.generateWaypoints(route);
+      const waypoints = await this.routeOptimizerService.generateWaypoints(route);
       result.set(vehicleId, {
         vehicle,
         waypoints,
@@ -115,6 +134,8 @@ export class DeliveryService {
     vehicle: any;
     waypoints: Waypoint[];
   }>> {
+    console.log(`Optimizing routes for area: North=${north}, South=${south}, East=${east}, West=${west}`);
+    
     // Validate coordinates
     if (north <= south) {
       throw new Error('North coordinate must be greater than south coordinate');
@@ -123,14 +144,23 @@ export class DeliveryService {
       throw new Error('East coordinate must be greater than west coordinate');
     }
 
+    // Get all vehicles first to see what's available
+    const allVehicles = await this.testDataService.getVehicles();
+    console.log(`Total vehicles in system: ${allVehicles.length}`);
+    console.log(`Vehicle statuses: ${allVehicles.map(v => `ID:${v.id}=${v.status}`).join(', ')}`);
+    
     const vehicles = await this.testDataService.getAvailableVehicles();
+    console.log(`Available vehicles: ${vehicles.length}`);
+    
     if (vehicles.length === 0) {
-      throw new Error('No available vehicles found');
+      throw new Error('No available vehicles found. Please ensure vehicles are marked as "available" status.');
     }
 
     const orders = await this.testDataService.getPendingOrders();
+    console.log(`Total pending orders: ${orders.length}`);
+    
     if (orders.length === 0) {
-      throw new Error('No pending orders found');
+      throw new Error('No pending orders found. Please create orders with "pending" status.');
     }
     
     // Filter orders within the specified area
@@ -140,25 +170,34 @@ export class DeliveryService {
       order.pickupLongitude <= east &&
       order.pickupLongitude >= west
     );
+    console.log(`Orders in specified area: ${areaOrders.length}`);
 
     if (areaOrders.length === 0) {
-      throw new Error('No orders found in the specified area');
+      throw new Error(`No orders found in the specified area. Please adjust coordinates: North=${north}, South=${south}, East=${east}, West=${west}`);
     }
+
+    // Log all order locations for debugging
+    console.log('Order locations:');
+    orders.forEach(order => {
+      console.log(`Order ${order.id}: (${order.pickupLatitude}, ${order.pickupLongitude}) -> (${order.deliveryLatitude}, ${order.deliveryLongitude})`);
+    });
 
     const vehicleRoutes = this.routeOptimizerService.optimizeMultiVehicleRoutes(
       vehicles,
       areaOrders,
     );
+    console.log(`Generated routes for ${vehicleRoutes.size} vehicles`);
 
     if (vehicleRoutes.size === 0) {
-      throw new Error('No routes could be generated for the available vehicles');
+      throw new Error('No routes could be generated for the available vehicles. This may be due to vehicle capacity or other constraints.');
     }
 
+    // Rest of the method remains the same
     const result = new Map();
     for (const [vehicleId, route] of vehicleRoutes.entries()) {
       const vehicle = vehicles.find(v => v.id === vehicleId);
       if (vehicle) {
-        const waypoints = this.routeOptimizerService.generateWaypoints(route);
+        const waypoints = await this.routeOptimizerService.generateWaypoints(route);
         result.set(vehicleId, {
           vehicle,
           waypoints,
@@ -167,7 +206,7 @@ export class DeliveryService {
     }
 
     if (result.size === 0) {
-      throw new Error('No valid routes could be generated');
+      throw new Error('No valid routes could be generated. This may indicate a problem with the routing algorithm.');
     }
 
     return result;

@@ -14,7 +14,14 @@ A NestJS-based fleet management system with route optimization capabilities.
 npm install
 ```
 
-2. Build the project:
+2. Create a `.env` file in the root directory and add your OpenRouteService API key:
+```
+OPENROUTE_API_KEY=your_api_key_here
+PORT=3000
+NODE_ENV=development
+```
+
+3. Build the project:
 ```bash
 npm run build
 ```
@@ -47,9 +54,32 @@ http://localhost:3000/api
 ### Route Optimization
 - GET `/delivery/optimize/1` - Optimize route for a single vehicle
 - GET `/delivery/optimize-multi` - Optimize routes for multiple vehicles
+- GET `/delivery/directions` - Get turn-by-turn directions between two points
 
 ### Order Management
 - PUT `/delivery/status/2` - Update order status
+
+## Using the Directions Service
+
+The fleet management system now includes turn-by-turn directions using OpenRouteService. This provides:
+
+1. Turn-by-turn navigation instructions
+2. More accurate travel time and distance calculations
+3. Real-world route planning
+
+To use this functionality:
+
+1. Sign up for a free API key at [OpenRouteService](https://openrouteservice.org/)
+2. Add your API key to the `.env` file
+3. The system will automatically use the API for all route optimizations
+
+### Example API request for directions:
+
+```
+GET /delivery/directions?startLat=13.4966&startLng=39.4753&endLat=13.5100&endLng=39.4800
+```
+
+This will return detailed turn-by-turn directions between the two coordinates.
 
 ## Testing
 
